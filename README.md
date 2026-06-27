@@ -1,15 +1,17 @@
 # Quinn
 
-A supervision layer for human–AI legal teams. Quinn triages AI review output by
-confidence × risk × consequence, lets a partner inspect the real reasoning and
-real sources behind each finding, and records every decision — and every
-change of belief over time — in a bi-temporal case-memory graph.
+Quinn is a supervision platform for human-AI legal teams. As firms delegate more 
+document review and drafting to AI, the bottleneck shifts from "can AI do the 
+work" to "can a partner trust and oversee it at scale." Quinn solves that.
+It brings every matter into one place, tracking who is working on what and logging 
+exactly where AI has been involved — giving supervising partners the visibility 
+they need to review and sign off with confidence.
 
-Everything in this app is live: real GDPR text from EUR-Lex, real model calls
-to Perplexity's Agent API, real graph writes at the moment work happens. The
-only authored content is the firm's own playbook (`data/playbook.json`) — the
-firm's standards, not legal advice or case material. If an external API can't
-be reached, the UI shows the real error; it never falls back to fake data.
+What sets Quinn apart is its structured knowledge graph. When new information 
+arrives, it doesn't overwrite a belief — it timestamps when something was changed 
+by somebody and learned by Quinn, letting a partner scrub back through time to see 
+exactly what was known, and when. That auditability is what turns AI-assisted legal 
+work from a productivity tool into something a firm can actually govern and scale.
 
 ## Stack
 
