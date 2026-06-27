@@ -441,7 +441,7 @@ export function MatterOverview({ matterId }: { matterId: string }) {
             e.preventDefault();
             ask(input);
           }}
-          className="relative flex items-end rounded-xl border border-border bg-background shadow-sm transition-shadow focus-within:shadow-md focus-within:border-foreground/20"
+          className="relative flex items-end rounded-[24px] border border-border/70 bg-muted/30 shadow-sm transition-all focus-within:shadow-md focus-within:border-foreground/15 focus-within:bg-background"
         >
           <textarea
             ref={inputRef}
@@ -455,13 +455,13 @@ export function MatterOverview({ matterId }: { matterId: string }) {
             }}
             placeholder={placeholder}
             rows={1}
-            className="flex-1 resize-none bg-transparent py-3 pl-4 pr-12 text-[14px] leading-relaxed outline-none placeholder:text-muted-foreground/50"
+            className="flex-1 resize-none bg-transparent py-3.5 pl-5 pr-14 text-[14px] leading-relaxed outline-none placeholder:text-muted-foreground/40"
             style={{ maxHeight: 160 }}
           />
           <button
             type="submit"
             disabled={asking || !input.trim()}
-            className="absolute bottom-2 right-2 flex size-8 items-center justify-center rounded-lg bg-foreground text-background transition-all hover:opacity-90 disabled:opacity-20 disabled:hover:opacity-20"
+            className="absolute bottom-2.5 right-2.5 flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-all hover:opacity-90 disabled:opacity-20 disabled:hover:opacity-20"
           >
             {asking ? (
               <Loader2 className="size-4 animate-spin" />

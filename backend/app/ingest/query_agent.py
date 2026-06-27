@@ -409,7 +409,7 @@ async def run_query_agent(
     question: str,
     matter_id: str,
     provider: str = "anthropic",
-    model_name: str = "claude-sonnet-4-20250514",
+    model_name: str = "claude-haiku-4-5-20251001",
     api_key: str = "",
     api_endpoint: str = "",
 ) -> dict:

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.auth_middleware import AuthUser, get_current_user
+from app.auth_middleware import AuthUser, optional_user
 
 router = APIRouter(prefix="/api", tags=["query"])
 
@@ -14,7 +14,7 @@ class QueryRequest(BaseModel):
 
 
 @router.post("/query")
-async def query_case(body: QueryRequest, user: AuthUser = Depends(get_current_user)) -> dict:
+async def query_case(body: QueryRequest, user: AuthUser | None = Depends(optional_user)) -> dict:
     from app.ingest.query_agent import run_query_agent
 
     try:

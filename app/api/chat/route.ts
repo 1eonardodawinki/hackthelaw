@@ -16,11 +16,18 @@ export async function POST(req: Request) {
   // Supabase access, and agentic reasoning. Fall back to the local semantic
   // similarity approach if the backend is unreachable.
   try {
+    // Get the Supabase session token to forward to the Python backend
     const supabase = await createClient();
     const { data: { session } } = await supabase.auth.getSession();
+
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (session?.access_token) {
       headers["Authorization"] = `Bearer ${session.access_token}`;
+    }
+
+    // If we have no session token, skip the backend (it will 401 anyway)
+    if (!session?.access_token) {
+      throw new Error("No session token available for backend auth");
     }
 
     const res = await fetch(`${BACKEND_URL}/api/query`, {
@@ -34,9 +41,10 @@ export async function POST(req: Request) {
       return NextResponse.json(data);
     }
 
-    // Backend returned an error — fall through to local fallback
-  } catch {
-    // Backend unreachable — fall through to local fallback
+    const errBody = await res.text().catch(() => "");
+    console.warn(`[chat] Backend /api/query returned ${res.status}: ${errBody}`);
+  } catch (err) {
+    console.warn(`[chat] Backend skipped:`, err instanceof Error ? err.message : err);
   }
 
   // Fallback: local semantic similarity search
