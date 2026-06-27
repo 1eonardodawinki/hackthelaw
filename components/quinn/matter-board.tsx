@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnalyzeButton, type AnalysisEvent } from "@/components/quinn/analyze-button";
 import { ClauseDetailPanel } from "@/components/quinn/clause-detail-panel";
 import { TimeScrubber, type SnapshotEntry } from "@/components/quinn/time-scrubber";
@@ -15,6 +17,15 @@ import type { ClauseWithFinding } from "@/lib/graph/queries";
 import type { MatterTimeRange } from "@/lib/graph/queries";
 
 const LANE_ORDER: Lane[] = ["needs_judgement", "quick_confirm", "auto_cleared", "unassessed"];
+
+// NVL's base library touches `document` at import time, which breaks Next's
+// SSR pass for client components — load it in the browser only.
+const MatterGraph = dynamic(() => import("@/components/quinn/matter-graph").then((m) => m.MatterGraph), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading graph…</div>
+  ),
+});
 
 function pickDefaultSelection(clauses: ClauseWithFinding[]): string | null {
   for (const lane of LANE_ORDER) {
@@ -38,6 +49,8 @@ export function MatterBoard({
   const [selectedId, setSelectedId] = useState<string | null>(() => pickDefaultSelection(initialClauses));
   const [model, setModel] = useState<"fast" | "reasoning">("fast");
   const [historical, setHistorical] = useState<{ entries: SnapshotEntry[]; viewingAt: number } | null>(null);
+  const [view, setView] = useState<"list" | "graph">("list");
+  const [liveGraphAt, setLiveGraphAt] = useState(() => Date.now());
 
   const displayClauses = useMemo(
     () => (historical ? applyHistoricalOverride(clauses, historical.entries) : clauses),
@@ -62,10 +75,12 @@ export function MatterBoard({
           : c
       )
     );
+    setLiveGraphAt(Date.now());
   }
 
   function handleDecided(clauseId: string, decision: string) {
     setClauses((prev) => prev.map((c) => (c.clauseId === clauseId ? { ...c, latestReviewDecision: decision } : c)));
+    setLiveGraphAt(Date.now());
     router.refresh();
   }
 
@@ -74,6 +89,7 @@ export function MatterBoard({
     setClauses((prev) =>
       prev.map((c) => (c.clauseId === clauseId ? { ...c, status: newStatus, latestReviewDecision: null } : c))
     );
+    setLiveGraphAt(Date.now());
   }
 
   const groups = useMemo(() => groupByLane(displayClauses), [displayClauses]);
@@ -94,10 +110,23 @@ export function MatterBoard({
       )}
 
       <div className="flex items-center justify-between gap-2 border-b pb-3">
-        <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+        <div className="flex items-center gap-3 text-[11px] uppercase tracking-wide text-muted-foreground">
           <span>{clauses.length} clauses</span>
           <span>·</span>
           <span>{clauses.filter((c) => c.latestReviewDecision).length} decided</span>
+          <Tabs
+            value={view}
+            onValueChange={(v) => {
+              const next = (v ?? "list") as "list" | "graph";
+              setView(next);
+              if (next === "graph") setLiveGraphAt(Date.now());
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="list">List</TabsTrigger>
+              <TabsTrigger value="graph">Graph</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
         {isLive && (
           <div className="flex items-center gap-2">
@@ -121,42 +150,48 @@ export function MatterBoard({
         )}
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="lg:w-[420px] lg:flex-shrink-0">
-          {LANE_ORDER.map((lane) => {
-            const items = groups[lane];
-            if (items.length === 0) return null;
-            const meta = LANE_META[lane];
-            return (
-              <div
-                key={lane}
-                className={lane === "needs_judgement" ? "border-l-2 border-attention pl-3" : "pl-3"}
-              >
-                <div className="pt-4 pb-1">
-                  <h2 className="font-heading text-base text-foreground">
-                    {meta.label} <span className="font-sans text-sm text-muted-foreground">({items.length})</span>
-                  </h2>
-                  <p className="text-xs text-muted-foreground">{meta.hint}</p>
+      {view === "list" ? (
+        <div className="flex flex-col gap-6 lg:flex-row">
+          <div className="lg:w-[420px] lg:flex-shrink-0">
+            {LANE_ORDER.map((lane) => {
+              const items = groups[lane];
+              if (items.length === 0) return null;
+              const meta = LANE_META[lane];
+              return (
+                <div
+                  key={lane}
+                  className={lane === "needs_judgement" ? "border-l-2 border-attention pl-3" : "pl-3"}
+                >
+                  <div className="pt-4 pb-1">
+                    <h2 className="font-heading text-base text-foreground">
+                      {meta.label} <span className="font-sans text-sm text-muted-foreground">({items.length})</span>
+                    </h2>
+                    <p className="text-xs text-muted-foreground">{meta.hint}</p>
+                  </div>
+                  <div>
+                    {items.map((c) => (
+                      <ClauseRow
+                        key={c.clauseId}
+                        clause={c}
+                        selected={c.clauseId === selectedId}
+                        onClick={() => setSelectedId(c.clauseId)}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  {items.map((c) => (
-                    <ClauseRow
-                      key={c.clauseId}
-                      clause={c}
-                      selected={c.clauseId === selectedId}
-                      onClick={() => setSelectedId(c.clauseId)}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
 
-        <div className="min-h-[480px] flex-1 rounded-md border lg:sticky lg:top-4 lg:h-[calc(100vh-8rem)]">
-          <ClauseDetailPanel clause={selected} onDecided={handleDecided} readOnly={!isLive} />
+          <div className="min-h-[480px] flex-1 rounded-md border lg:sticky lg:top-4 lg:h-[calc(100vh-8rem)]">
+            <ClauseDetailPanel clause={selected} onDecided={handleDecided} readOnly={!isLive} />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="h-[calc(100vh-12rem)] rounded-md border">
+          <MatterGraph matterId={matterId} viewingAt={historical?.viewingAt ?? liveGraphAt} />
+        </div>
+      )}
     </div>
   );
 }

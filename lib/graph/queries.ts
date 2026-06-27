@@ -157,6 +157,163 @@ export async function getMatterTimeRange(matterId: string): Promise<MatterTimeRa
   };
 }
 
+export interface GraphNode {
+  id: string;
+  label: "Matter" | "Party" | "Clause" | "Finding" | "Provision" | "PlaybookRule" | "Review" | "SignOff";
+  caption: string;
+  properties: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  type: string;
+  caption?: string;
+}
+
+export interface MatterGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+type Neo4jNode = { properties: Record<string, unknown> };
+
+/**
+ * The matter's subgraph as Quinn believed it at instant t: parties, clauses,
+ * each clause's current-as-of-t finding (same bi-temporal window as
+ * snapshotAt), and what that finding relied on, deviated from, and was
+ * reviewed/signed off by — all filtered to have existed by t.
+ */
+export async function getMatterGraph(matterId: string, t: number): Promise<MatterGraph> {
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+
+  const matterRecords = await runRead(`MATCH (m:Matter {id: $matterId}) RETURN m`, { matterId });
+  if (matterRecords.length === 0) return { nodes, edges };
+  const matter = matterRecords[0].get("m") as Neo4jNode;
+  nodes.push({
+    id: matterId,
+    label: "Matter",
+    caption: String(matter.properties.name),
+    properties: matter.properties,
+  });
+
+  const partyRecords = await runRead(
+    `MATCH (m:Matter {id: $matterId})-[:INVOLVES]->(p:Party) RETURN p`,
+    { matterId }
+  );
+  for (const rec of partyRecords) {
+    const p = rec.get("p") as Neo4jNode;
+    const id = p.properties.id as string;
+    nodes.push({ id, label: "Party", caption: String(p.properties.name), properties: p.properties });
+    edges.push({ id: `${matterId}-involves-${id}`, from: matterId, to: id, type: "INVOLVES" });
+  }
+
+  const clauseRecords = await runRead(
+    `MATCH (c:Clause {matterId: $matterId})
+     OPTIONAL MATCH (c)-[r:ASSESSED_AS]->(f:Finding)
+       WHERE r.validAt <= $t AND (r.invalidAt IS NULL OR r.invalidAt > $t)
+         AND r.createdAt <= $t AND (r.expiredAt IS NULL OR r.expiredAt > $t)
+     RETURN c, f`,
+    { matterId, t }
+  );
+  const findingIds: string[] = [];
+  for (const rec of clauseRecords) {
+    const c = rec.get("c") as Neo4jNode;
+    const clauseId = c.properties.id as string;
+    nodes.push({ id: clauseId, label: "Clause", caption: String(c.properties.ref), properties: c.properties });
+    edges.push({ id: `${matterId}-clause-${clauseId}`, from: matterId, to: clauseId, type: "HAS_CLAUSE" });
+
+    const f = rec.get("f") as Neo4jNode | null;
+    if (f) {
+      const findingId = f.properties.id as string;
+      nodes.push({
+        id: findingId,
+        label: "Finding",
+        caption: String(f.properties.status),
+        properties: f.properties,
+      });
+      edges.push({ id: `assessed-${clauseId}`, from: clauseId, to: findingId, type: "ASSESSED_AS" });
+      findingIds.push(findingId);
+    }
+  }
+
+  if (findingIds.length > 0) {
+    const relyRecords = await runRead(
+      `MATCH (f:Finding)-[:RELIES_ON]->(p:Provision) WHERE f.id IN $findingIds RETURN f.id AS findingId, p`,
+      { findingIds }
+    );
+    for (const rec of relyRecords) {
+      const p = rec.get("p") as Neo4jNode;
+      const provisionId = p.properties.id as string;
+      const findingId = rec.get("findingId") as string;
+      if (!nodes.some((n) => n.id === provisionId)) {
+        nodes.push({
+          id: provisionId,
+          label: "Provision",
+          caption: `Art. ${p.properties.article}`,
+          properties: p.properties,
+        });
+      }
+      edges.push({ id: `relies-${findingId}-${provisionId}`, from: findingId, to: provisionId, type: "RELIES_ON" });
+    }
+
+    const deviationRecords = await runRead(
+      `MATCH (f:Finding)-[d:DEVIATES_FROM]->(r:PlaybookRule)
+       WHERE f.id IN $findingIds
+       RETURN f.id AS findingId, r, d.explanation AS explanation`,
+      { findingIds }
+    );
+    for (const rec of deviationRecords) {
+      const r = rec.get("r") as Neo4jNode;
+      const ruleId = r.properties.id as string;
+      const findingId = rec.get("findingId") as string;
+      if (!nodes.some((n) => n.id === ruleId)) {
+        nodes.push({
+          id: ruleId,
+          label: "PlaybookRule",
+          caption: String(r.properties.title),
+          properties: r.properties,
+        });
+      }
+      edges.push({
+        id: `deviates-${findingId}-${ruleId}`,
+        from: findingId,
+        to: ruleId,
+        type: "DEVIATES_FROM",
+        caption: rec.get("explanation") as string,
+      });
+    }
+
+    const reviewRecords = await runRead(
+      `MATCH (rev:Review)-[:OF]->(f:Finding) WHERE f.id IN $findingIds AND rev.at <= $t RETURN f.id AS findingId, rev`,
+      { findingIds, t }
+    );
+    for (const rec of reviewRecords) {
+      const rev = rec.get("rev") as Neo4jNode;
+      const reviewId = rev.properties.id as string;
+      const findingId = rec.get("findingId") as string;
+      nodes.push({ id: reviewId, label: "Review", caption: String(rev.properties.decision), properties: rev.properties });
+      edges.push({ id: `review-${reviewId}`, from: reviewId, to: findingId, type: "OF" });
+    }
+
+    const signOffRecords = await runRead(
+      `MATCH (so:SignOff)-[:ATTESTS]->(f:Finding) WHERE f.id IN $findingIds AND so.at <= $t RETURN f.id AS findingId, so`,
+      { findingIds, t }
+    );
+    for (const rec of signOffRecords) {
+      const so = rec.get("so") as Neo4jNode;
+      const signOffId = so.properties.id as string;
+      const findingId = rec.get("findingId") as string;
+      nodes.push({ id: signOffId, label: "SignOff", caption: "Signed off", properties: so.properties });
+      edges.push({ id: `signoff-${signOffId}`, from: signOffId, to: findingId, type: "ATTESTS" });
+    }
+  }
+
+  return { nodes, edges };
+}
+
 function toNumber(value: unknown): number {
   if (typeof value === "number") return value;
   if (value && typeof (value as { toNumber?: () => number }).toNumber === "function") {
