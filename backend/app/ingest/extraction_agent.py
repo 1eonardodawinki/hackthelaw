@@ -117,6 +117,31 @@ def add_entity(entity_type: str, name: str, properties: dict) -> str:
 
 
 @tool
+def set_matter_title(title: str, description: str = "") -> str:
+    """Set a concise, human-readable title for this legal matter/case.
+
+    Call this FIRST, before extracting entities. Read the document and create
+    a short title that a lawyer would use to identify this case at a glance.
+
+    Args:
+        title: A concise title (e.g. "Stanford Receivership Settlement — Independent Bank",
+               "Post Office Horizon IT Inquiry — Paula Vennells Witness Statement",
+               "CloudVendor Data Processing Agreement Review").
+               Keep it under 80 characters. Include key parties or subject matter.
+        description: A one-sentence summary of what this document is about.
+    """
+    write_query_sync(
+        """
+        MATCH (m:Matter {id: $mid})
+        SET m.name = $title, m.description = $description
+        """,
+        {"mid": _ctx["matter_id"], "title": title, "description": description},
+    )
+    _ctx["matter_title"] = title
+    return f"Matter title set to: {title}"
+
+
+@tool
 def add_relation(from_name: str, to_name: str, relation_type: str, properties: dict | None = None) -> str:
     """Create a relationship between two entities that you have already added.
 
@@ -181,9 +206,13 @@ def add_relation(from_name: str, to_name: str, relation_type: str, properties: d
 SYSTEM_PROMPT = """You are a legal document analyst building a knowledge graph — a "second brain" for a lawyer.
 
 Your job is to read a legal document and extract EVERYTHING useful into a structured knowledge graph.
-You have two tools:
+You have three tools:
 
-1. **add_entity(type, name, properties)** — Create a node for anything meaningful you find.
+1. **set_matter_title(title, description)** — CALL THIS FIRST. Give the case/matter a concise,
+   human-readable title based on the document content. Example: "Post Office Horizon IT Inquiry —
+   Vennells Witness Statement". Keep it under 80 characters.
+
+2. **add_entity(type, name, properties)** — Create a node for anything meaningful you find.
    You choose the entity type. Be creative and thorough. Extract:
    - People, organizations, law firms, courts, judges
    - Clauses, sections, articles — with their FULL verbatim text
@@ -197,7 +226,7 @@ You have two tools:
    - Conditions, triggers, events
    - Any other structured information a lawyer would want to recall later
 
-2. **add_relation(from_name, to_name, relation_type, properties)** — Connect entities.
+3. **add_relation(from_name, to_name, relation_type, properties)** — Connect entities.
    After adding entities, link them to show HOW they relate.
 
 Rules:
@@ -295,7 +324,7 @@ async def run_extraction(
     agent = Agent(
         model=model,
         system_prompt=SYSTEM_PROMPT,
-        tools=[add_entity, add_relation],
+        tools=[set_matter_title, add_entity, add_relation],
     )
 
     prompt = f"""Analyze this legal document thoroughly. Extract every entity (people, orgs, clauses, amounts, dates, obligations, risks, etc.) and map the relationships between them.
@@ -308,6 +337,7 @@ async def run_extraction(
 
     return {
         "episode_id": episode_id,
+        "matter_title": _ctx.get("matter_title"),
         "entities": _ctx["entities"],
         "relations": _ctx["relations"],
     }
