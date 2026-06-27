@@ -3,15 +3,16 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import close_driver, ping
+from app.routes.matters import router as matters_router
+from app.routes.graph import router as graph_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup — nothing to do yet (driver is lazy)
     yield
-    # Shutdown
     await close_driver()
 
 
@@ -20,6 +21,19 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# CORS — allow the Next.js frontend to call this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Routes
+app.include_router(matters_router)
+app.include_router(graph_router)
 
 
 @app.get("/health")
