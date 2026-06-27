@@ -34,11 +34,13 @@ export function InspectSheet({
   open,
   onOpenChange,
   onDecided,
+  readOnly = false,
 }: {
   clause: ClauseWithFinding | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDecided: (clauseId: string, decision: string) => void;
+  readOnly?: boolean;
 }) {
   const [loaded, setLoaded] = useState<{ findingId: string; trace: TraceResponse } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -203,33 +205,43 @@ export function InspectSheet({
             </>
           )}
 
-          <Separator />
-
-          <section>
-            <h3 className="mb-1 text-xs font-medium uppercase text-muted-foreground">Amend summary (optional)</h3>
-            <Textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Edit the assessment summary, or add a note for reject/escalate..."
-              rows={3}
-            />
-          </section>
+          {!readOnly && (
+            <>
+              <Separator />
+              <section>
+                <h3 className="mb-1 text-xs font-medium uppercase text-muted-foreground">Amend summary (optional)</h3>
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Edit the assessment summary, or add a note for reject/escalate..."
+                  rows={3}
+                />
+              </section>
+            </>
+          )}
+          {readOnly && (
+            <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+              Viewing a historical belief — decide actions are disabled. Return to live to act on this clause.
+            </p>
+          )}
         </div>
 
-        <SheetFooter className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Button onClick={() => decide("approve")} disabled={!!submitting} variant="default">
-            {submitting === "approve" ? <Loader2 className="size-4 animate-spin" /> : "Approve"}
-          </Button>
-          <Button onClick={() => decide("amend")} disabled={!!submitting} variant="secondary">
-            {submitting === "amend" ? <Loader2 className="size-4 animate-spin" /> : "Amend"}
-          </Button>
-          <Button onClick={() => decide("reject")} disabled={!!submitting} variant="destructive">
-            {submitting === "reject" ? <Loader2 className="size-4 animate-spin" /> : "Reject"}
-          </Button>
-          <Button onClick={() => decide("escalate")} disabled={!!submitting} variant="outline">
-            {submitting === "escalate" ? <Loader2 className="size-4 animate-spin" /> : "Escalate"}
-          </Button>
-        </SheetFooter>
+        {!readOnly && (
+          <SheetFooter className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Button onClick={() => decide("approve")} disabled={!!submitting} variant="default">
+              {submitting === "approve" ? <Loader2 className="size-4 animate-spin" /> : "Approve"}
+            </Button>
+            <Button onClick={() => decide("amend")} disabled={!!submitting} variant="secondary">
+              {submitting === "amend" ? <Loader2 className="size-4 animate-spin" /> : "Amend"}
+            </Button>
+            <Button onClick={() => decide("reject")} disabled={!!submitting} variant="destructive">
+              {submitting === "reject" ? <Loader2 className="size-4 animate-spin" /> : "Reject"}
+            </Button>
+            <Button onClick={() => decide("escalate")} disabled={!!submitting} variant="outline">
+              {submitting === "escalate" ? <Loader2 className="size-4 animate-spin" /> : "Escalate"}
+            </Button>
+          </SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   );

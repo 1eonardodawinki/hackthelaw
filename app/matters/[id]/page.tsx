@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getMatterDetail } from "@/lib/graph/queries";
+import { getMatterDetail, getMatterTimeRange } from "@/lib/graph/queries";
 import { MatterBoard } from "@/components/quinn/matter-board";
 import { Badge } from "@/components/ui/badge";
 
@@ -12,6 +12,7 @@ export default async function MatterPage({ params }: { params: Promise<{ id: str
   if (!detail) notFound();
 
   const { matter, parties, clauses } = detail;
+  const timeRange = await getMatterTimeRange(id);
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 p-8">
@@ -34,7 +35,7 @@ export default async function MatterPage({ params }: { params: Promise<{ id: str
         )}
       </div>
 
-      <MatterBoard matterId={matter.id} initialClauses={clauses} />
+      <MatterBoard matterId={matter.id} initialClauses={clauses} timeRange={timeRange} />
     </main>
   );
 }

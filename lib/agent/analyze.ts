@@ -49,7 +49,12 @@ export interface ClauseInput {
   text: string;
 }
 
-function buildPrompt(clause: ClauseInput, provisions: ProvisionRecord[], rules: PlaybookRuleRecord[]): string {
+function buildPrompt(
+  clause: ClauseInput,
+  provisions: ProvisionRecord[],
+  rules: PlaybookRuleRecord[],
+  additionalContext?: string
+): string {
   const provisionsBlock = provisions
     .map((p) => `[${p.celex}#${p.article}] ${p.title}\n${p.text}`)
     .join("\n\n");
@@ -69,7 +74,7 @@ ${provisionsBlock || "(none retrieved as relevant)"}
 
 FIRM PLAYBOOK RULES (cite ruleCode exactly as bracketed, e.g. "DPA-01"):
 ${rulesBlock}
-
+${additionalContext ? `\nNEW INFORMATION JUST RECEIVED — weigh this against the clause text above:\n"""\n${additionalContext}\n"""\n` : ""}
 Decide whether the clause is compliant, partially_compliant, non_compliant, or unclear with
 respect to the GDPR provisions and playbook rules above. List every playbook rule the clause
 deviates from, with a one-sentence explanation each. Cite only provisions you actually relied on.
@@ -81,9 +86,9 @@ export async function analyzeClause(
   clause: ClauseInput,
   provisions: ProvisionRecord[],
   rules: PlaybookRuleRecord[],
-  opts: { model?: string } = {}
+  opts: { model?: string; additionalContext?: string } = {}
 ): Promise<ClauseAnalysisResult> {
-  const prompt = buildPrompt(clause, provisions, rules);
+  const prompt = buildPrompt(clause, provisions, rules, opts.additionalContext);
   const raw = await completeJSON<unknown>(prompt, JSON_SCHEMA, {
     model: opts.model ?? MODELS.fast,
   });

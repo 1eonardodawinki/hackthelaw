@@ -21,7 +21,8 @@ export interface AssertFactInput {
   finding: FindingProps;
   citedProvisionIds?: string[];
   deviations?: DeviationInput[];
-  derivedFromEpisodeId?: string;
+  /** One or more episodes this finding was derived from (e.g. the analysis run, and the document that triggered it). */
+  derivedFromEpisodeId?: string | string[];
   /** When the fact became true in the world. Defaults to `createdAt`. */
   validAt?: number;
   /** When Quinn learned the fact. Defaults to now. */
@@ -80,11 +81,16 @@ async function createFindingAndEdges(
     );
   }
 
-  if (input.derivedFromEpisodeId) {
+  const episodeIds = input.derivedFromEpisodeId
+    ? Array.isArray(input.derivedFromEpisodeId)
+      ? input.derivedFromEpisodeId
+      : [input.derivedFromEpisodeId]
+    : [];
+  for (const episodeId of episodeIds) {
     await runWrite(
       `MATCH (f:Finding {id: $findingId}), (e:Episode {id: $episodeId})
        MERGE (f)-[:DERIVED_FROM]->(e)`,
-      { findingId, episodeId: input.derivedFromEpisodeId }
+      { findingId, episodeId }
     );
   }
 

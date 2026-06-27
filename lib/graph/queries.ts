@@ -138,6 +138,25 @@ export async function getMatterDetail(matterId: string): Promise<MatterDetail | 
   };
 }
 
+export interface MatterTimeRange {
+  earliest: number | null;
+  latest: number | null;
+}
+
+/** The full createdAt range across every version of every fact for a matter (not just current ones). */
+export async function getMatterTimeRange(matterId: string): Promise<MatterTimeRange> {
+  const records = await runRead(
+    `MATCH (c:Clause {matterId: $matterId})-[r:ASSESSED_AS]->(:Finding)
+     RETURN min(r.createdAt) AS earliest, max(r.createdAt) AS latest`,
+    { matterId }
+  );
+  if (records.length === 0) return { earliest: null, latest: null };
+  return {
+    earliest: records[0].get("earliest"),
+    latest: records[0].get("latest"),
+  };
+}
+
 function toNumber(value: unknown): number {
   if (typeof value === "number") return value;
   if (value && typeof (value as { toNumber?: () => number }).toNumber === "function") {
