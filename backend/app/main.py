@@ -9,6 +9,8 @@ from app.db import close_driver, ping
 from app.routes.matters import router as matters_router
 from app.routes.graph import router as graph_router
 from app.routes.seed import router as seed_router
+from app.routes.documents import router as documents_router
+from app.routes.entities import router as entities_router
 
 
 @asynccontextmanager
@@ -36,6 +38,8 @@ app.add_middleware(
 app.include_router(matters_router)
 app.include_router(graph_router)
 app.include_router(seed_router)
+app.include_router(documents_router)
+app.include_router(entities_router)
 
 
 @app.get("/health")

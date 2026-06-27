@@ -5,6 +5,8 @@ app/db.py
 app/main.py
 app/models.py
 app/routes/__init__.py
+app/routes/documents.py
+app/routes/entities.py
 app/routes/graph.py
 app/routes/matters.py
 app/routes/seed.py

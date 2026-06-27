@@ -91,3 +91,29 @@ export async function getGraph(matterId?: string): Promise<GraphData> {
     : "/api/graph";
   return request<GraphData>(path);
 }
+
+// ---------------------------------------------------------------------------
+// Entities
+// ---------------------------------------------------------------------------
+
+export interface EntityItem {
+  id: string;
+  name: string;
+  type: string;
+  description: string | null;
+  text: string | null;
+  matter_id: string;
+  document_id: string | null;
+  labels: string[];
+  properties: Record<string, unknown>;
+}
+
+export async function getEntities(matterId: string): Promise<EntityItem[]> {
+  return request<EntityItem[]>(`/api/entities/${encodeURIComponent(matterId)}`);
+}
+
+export async function getEntitySummary(matterId: string) {
+  return request<{ matter_id: string; total: number; by_type: Record<string, number> }>(
+    `/api/entities/${encodeURIComponent(matterId)}/summary`
+  );
+}

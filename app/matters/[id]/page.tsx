@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getMatterDetail, getMatterTimeRange } from "@/lib/graph/queries";
-import { MatterBoard } from "@/components/quinn/matter-board";
+import { MatterDetailTabs } from "@/components/quinn/matter-detail-tabs";
+import { UploadDocumentButton } from "@/components/quinn/upload-document";
 
 export const dynamic = "force-dynamic";
 
@@ -14,23 +15,30 @@ export default async function MatterPage({ params }: { params: Promise<{ id: str
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-8 py-8">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">{matter.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {matter.client ?? "Client not yet set"} · {matter.type} · {matter.status}
-        </p>
-        {parties.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {parties.map((p) => (
-              <span key={p.id}>
-                {p.role}: {p.name}
-              </span>
-            ))}
-          </div>
-        )}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">{matter.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            {matter.client ?? "Client not yet set"} · {matter.type} · {matter.status}
+          </p>
+          {parties.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {parties.map((p) => (
+                <span key={p.id}>
+                  {p.role}: {p.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <UploadDocumentButton matterId={matter.id} />
       </div>
 
-      <MatterBoard matterId={matter.id} initialClauses={clauses} timeRange={timeRange} />
+      <MatterDetailTabs
+        matterId={matter.id}
+        initialClauses={clauses}
+        timeRange={timeRange}
+      />
     </main>
   );
 }

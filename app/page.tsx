@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listMattersOverview, type MatterOverview } from "@/lib/graph/queries";
 import { StatusDot } from "@/components/quinn/status-dot";
 import { relativeTime } from "@/lib/format";
+import { UploadDocumentButton } from "@/components/quinn/upload-document";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +25,14 @@ export default async function ControlTowerPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-10 py-12">
-      <div className="mb-10">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">Matters</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Allocating your attention to the AI outputs where your judgement changes the outcome.
-        </p>
+      <div className="mb-10 flex items-start justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">Matters</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Allocating your attention to the AI outputs where your judgement changes the outcome.
+          </p>
+        </div>
+        <UploadDocumentButton />
       </div>
 
       {loadError && (
