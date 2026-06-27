@@ -19,6 +19,7 @@ from app.audit import log_action
 from app.db import read_query, write_query
 from app.ingest.extract_text import extract_text, content_hash
 from app.ingest.similarity import find_similar_documents
+from app.ingest.semantic_similarity import find_semantic_matches, SemanticSimilarityResult
 from app.supabase_client import get_supabase, get_case_uuid_by_slug
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -128,6 +129,29 @@ async def upload_document(
         except Exception:
             pass
 
+    # If text-based similarity found nothing, try semantic (LLM) comparison
+    semantic_match: SemanticSimilarityResult | None = None
+    if (not similarity or similarity.status == "new") and case_uuid:
+        try:
+            semantic_match = await find_semantic_matches(
+                new_text=text,
+                new_filename=file.filename or "",
+                matter_slug=matter_id,
+                neo4j_read_query=read_query,
+            )
+            # Promote semantic match to similarity result for downstream handling
+            if semantic_match and semantic_match.relationship == "evolved_version":
+                from app.ingest.similarity import SimilarityResult
+                similarity = SimilarityResult(
+                    status="near_duplicate",
+                    score=semantic_match.confidence,
+                    matched_document_id=semantic_match.matched_document_id,
+                    matched_filename=semantic_match.matched_filename,
+                    diff_summary=None,
+                )
+        except Exception:
+            pass
+
     # Upload file to Supabase Storage
     storage_path = None
     if case_uuid:
@@ -152,9 +176,11 @@ async def upload_document(
                 "storage_path": storage_path,
                 "extraction_status": "pending",
                 "uploaded_by": user.id,
-                "similarity_status": similarity.status if similarity else "new",
+                "similarity_status": ("evolved_version" if semantic_match and semantic_match.relationship == "evolved_version" else similarity.status) if similarity else "new",
                 "similarity_score": similarity.score if similarity else None,
                 "similarity_parent_id": similarity.matched_document_id if similarity else None,
+                "semantic_explanation": semantic_match.explanation if semantic_match else "",
+                "semantic_key_changes": semantic_match.key_changes if semantic_match else [],
             }
             # Override created_at for timeline simulation
             if simulated_date:
@@ -196,6 +222,7 @@ async def upload_document(
         "full_text": text,
         "duplicate": existing[0] if existing else None,
         "similarity": similarity.to_dict() if similarity else None,
+        "semantic_match": semantic_match.to_dict() if semantic_match else None,
         "case_doc_id": case_doc_id,
     }
 
@@ -617,4 +644,194 @@ async def get_document_diff(document_id: str) -> dict:
         "diff_summary": diff,
         "original_chars": len(parent_text),
         "new_chars": len(new_text),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Document Content — view the extracted text
+# ---------------------------------------------------------------------------
+
+@router.get("/{document_id}/content")
+async def get_document_content(document_id: str) -> dict:
+    """Get the extracted text content of a document.
+
+    Tries by Supabase case_documents.id first (UUID), then by Neo4j document ID.
+    """
+    sb = get_supabase()
+
+    # Look up the Neo4j document ID from Supabase
+    sb_doc = (
+        sb.table("case_documents")
+        .select("neo4j_document_id, filename, title")
+        .eq("id", document_id)
+        .maybe_single()
+        .execute()
+    )
+    neo4j_doc_id = None
+    filename = ""
+    if sb_doc and sb_doc.data:
+        neo4j_doc_id = sb_doc.data.get("neo4j_document_id")
+        filename = sb_doc.data.get("filename", "")
+
+    # If no Supabase match, try as Neo4j doc ID directly
+    if not neo4j_doc_id:
+        neo4j_doc_id = document_id
+
+    rows = await read_query(
+        """
+        MATCH (d:Document {id: $did})-[:HAS_VERSION]->(v:Version)
+        RETURN v.content AS content, d.title AS title, d.filename AS filename
+        ORDER BY v.version_no DESC LIMIT 1
+        """,
+        {"did": neo4j_doc_id},
+    )
+    if not rows:
+        raise HTTPException(404, "Document content not found")
+
+    return {
+        "content": rows[0]["content"],
+        "title": rows[0].get("title") or filename,
+        "filename": rows[0].get("filename") or filename,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Document Lifecycle — version history as an object timeline
+# ---------------------------------------------------------------------------
+
+@router.get("/{document_id}/lifecycle")
+async def get_document_lifecycle(document_id: str) -> dict:
+    """Get the full version lifecycle of a document object.
+
+    Traces the version chain (parent_document_id links) to build a timeline
+    of how this document evolved: initial upload → minor edits → major rewrites.
+    """
+    sb = get_supabase()
+
+    # Find the root document (walk up the parent chain)
+    root_id = document_id
+    visited = set()
+    while True:
+        if root_id in visited:
+            break
+        visited.add(root_id)
+        result = sb.table("case_documents").select("id, parent_document_id, similarity_parent_id").eq("id", root_id).maybe_single().execute()
+        if not result or not result.data:
+            break
+        parent = result.data.get("parent_document_id") or result.data.get("similarity_parent_id")
+        if not parent or parent == root_id:
+            break
+        root_id = parent
+
+    # Now collect all versions: root + all docs that point to root (or each other in chain)
+    # Get all case_documents for the same case
+    root_doc = sb.table("case_documents").select("case_id, filename, title").eq("id", root_id).maybe_single().execute()
+    if not root_doc or not root_doc.data:
+        raise HTTPException(404, "Document not found")
+
+    case_id = root_doc.data["case_id"]
+    all_docs = sb.table("case_documents").select("*").eq("case_id", case_id).order("created_at").execute()
+
+    # Build the version chain from root
+    chain_ids = {root_id}
+    changed = True
+    while changed:
+        changed = False
+        for doc in (all_docs.data or []):
+            if doc["id"] in chain_ids:
+                continue
+            parent = doc.get("parent_document_id") or doc.get("similarity_parent_id")
+            if parent and parent in chain_ids:
+                chain_ids.add(doc["id"])
+                changed = True
+
+    # Also add docs where the root is THEIR similarity parent
+    for doc in (all_docs.data or []):
+        if doc.get("similarity_parent_id") in chain_ids or doc.get("parent_document_id") in chain_ids:
+            chain_ids.add(doc["id"])
+
+    # Filter and sort by created_at
+    chain_docs = [d for d in (all_docs.data or []) if d["id"] in chain_ids]
+    chain_docs.sort(key=lambda d: d.get("created_at", ""))
+
+    # Build version nodes
+    versions = []
+    for i, doc in enumerate(chain_docs):
+        is_first = i == 0
+        is_last = i == len(chain_docs) - 1
+
+        # Determine change type
+        sim_status = doc.get("similarity_status", "new")
+        if is_first:
+            change_type = "initial"
+        elif sim_status in ("evolved_version", "similar"):
+            change_type = "major"
+        elif sim_status == "near_duplicate":
+            change_type = "minor"
+        elif is_last:
+            change_type = "current"
+        else:
+            change_type = "minor"
+
+        # Override last real doc as "current"
+        if is_last and change_type != "initial":
+            change_type = "current"
+
+        version_num = doc.get("version_number", i + 1)
+        major = version_num
+        minor = 0
+        if change_type == "minor" and i > 0:
+            prev_version = versions[-1]["version"] if versions else "1.0"
+            parts = prev_version.split(".")
+            major = int(parts[0])
+            minor = int(parts[1]) + 1 if len(parts) > 1 else 1
+        elif change_type in ("major", "current") and versions:
+            prev_version = versions[-1]["version"]
+            parts = prev_version.split(".")
+            major = int(parts[0]) + 1
+            minor = 0
+        elif is_first:
+            major = 1
+            minor = 0
+
+        version_str = f"{major}.{minor}"
+
+        # Get uploader info
+        uploaded_by = doc.get("uploaded_by", "")
+        try:
+            user_info = sb.auth.admin.get_user_by_id(uploaded_by)
+            email = user_info.user.email if user_info and user_info.user else uploaded_by[:8]
+        except Exception:
+            email = uploaded_by[:8] if uploaded_by else "unknown"
+
+        versions.append({
+            "id": doc["id"],
+            "version": version_str,
+            "date": doc.get("created_at", ""),
+            "uploaded_by_email": email,
+            "change_type": change_type,
+            "similarity_score": doc.get("similarity_score"),
+            "entity_count": doc.get("extracted_entity_count", 0),
+            "key_changes": doc.get("semantic_key_changes", []),
+            "semantic_explanation": doc.get("semantic_explanation", ""),
+        })
+
+    # Reviews (AI extractions are tracked as reviews)
+    reviews = []
+    for i, doc in enumerate(chain_docs):
+        if doc.get("extraction_status") == "done":
+            reviews.append({
+                "id": f"{doc['id']}::review",
+                "type": "ai_review",
+                "date": doc.get("created_at", ""),
+                "reviewer": "AI",
+                "linked_version": doc["id"],
+            })
+
+    return {
+        "document_name": root_doc.data.get("title") or root_doc.data.get("filename", ""),
+        "document_type": chain_docs[0].get("doc_type", "") if chain_docs else "",
+        "total_versions": len(versions),
+        "versions": versions,
+        "reviews": reviews,
     }

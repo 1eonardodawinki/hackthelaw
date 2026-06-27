@@ -129,6 +129,20 @@ export async function getEntities(matterId: string): Promise<EntityItem[]> {
   return request<EntityItem[]>(`/api/entities/${encodeURIComponent(matterId)}`);
 }
 
+export interface DocumentEntities {
+  document_id: string;
+  document_title: string;
+  document_filename: string;
+  created_at: number | string | null;
+  entity_count: number;
+  entities_by_type: Record<string, { id: string; name: string; type: string; description: string | null }[]>;
+  entities: { id: string; name: string; type: string; description: string | null; extracted_at: number | null }[];
+}
+
+export async function getEntitiesByDocument(matterId: string): Promise<DocumentEntities[]> {
+  return request<DocumentEntities[]>(`/api/entities/${encodeURIComponent(matterId)}/by-document`);
+}
+
 export async function getEntitySummary(matterId: string) {
   return request<{ matter_id: string; total: number; by_type: Record<string, number> }>(
     `/api/entities/${encodeURIComponent(matterId)}/summary`
@@ -147,6 +161,8 @@ export interface TimelineBatch {
     filename: string;
     title: string;
     uploaded_at: string;
+    uploaded_by: string;
+    uploaded_by_email: string;
     similarity_status: string;
     similarity_score: number | null;
     similarity_parent_filename: string | null;
@@ -172,6 +188,12 @@ export interface TimelineData {
 
 export async function getTimeline(slug: string): Promise<TimelineData> {
   return request<TimelineData>(`/api/cases/${encodeURIComponent(slug)}/timeline`);
+}
+
+export async function getDocumentContent(docId: string) {
+  return request<{ content: string; title: string; filename: string }>(
+    `/api/documents/${encodeURIComponent(docId)}/content`
+  );
 }
 
 export async function getDocumentDiff(docId: string) {

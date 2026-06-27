@@ -5,8 +5,16 @@ import {
   FileText, CheckCircle2, AlertTriangle, Copy, Clock,
   ChevronDown, ChevronRight, ArrowUpRight, Loader2,
 } from "lucide-react";
-import { getTimeline, type TimelineBatch, type TimelineData } from "@/lib/backend";
+import { getTimeline, getDocumentContent, type TimelineBatch, type TimelineData } from "@/lib/backend";
 import { DocumentDiffDialog } from "@/components/quinn/document-diff-dialog";
+import { DocumentLifecycle } from "@/components/quinn/document-lifecycle";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
@@ -23,6 +31,14 @@ function StatusBadge({ status, score, parentFilename }: {
       <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600">
         <Copy className="size-3" />
         Duplicate
+      </span>
+    );
+  }
+  if (status === "evolved_version") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+        <ArrowUpRight className="size-3" />
+        Evolved version
       </span>
     );
   }
@@ -50,79 +66,147 @@ function StatusBadge({ status, score, parentFilename }: {
   );
 }
 
-function EntityBar({ count, max }: { count: number; max: number }) {
-  const width = max > 0 ? Math.max((count / max) * 100, 2) : 0;
+function DocumentPreviewDialog({
+  doc,
+  onClose,
+}: {
+  doc: TimelineBatch["documents"][0];
+  onClose: () => void;
+}) {
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDocumentContent(doc.id)
+      .then((data) => setContent(data.content))
+      .catch(() => setContent("Could not load document content."))
+      .finally(() => setLoading(false));
+  }, [doc.id]);
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-foreground/30 transition-all duration-700"
-          style={{ width: `${width}%` }}
-        />
-      </div>
-      <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-        {count}
-      </span>
-    </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="size-4" />
+            {doc.filename}
+          </DialogTitle>
+          <DialogDescription>
+            {doc.char_count.toLocaleString()} characters · {doc.entity_count} entities extracted
+            {doc.uploaded_by_email && ` · uploaded by ${doc.uploaded_by_email.split("@")[0]}`}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto rounded-md border bg-muted/20 p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/80">
+              {content}
+            </pre>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function DocumentCard({ doc, onViewDiff }: {
+function DocumentCard({ doc, matterId, onViewDiff }: {
   doc: TimelineBatch["documents"][0];
+  matterId: string;
   onViewDiff: (docId: string) => void;
 }) {
+  const [showLifecycle, setShowLifecycle] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const isDupe = doc.similarity_status === "exact_duplicate";
+  const hasVersions = doc.version_chain.length > 0 || doc.similarity_status === "evolved_version" || doc.similarity_status === "near_duplicate";
+
+  const uploaderInitial = doc.uploaded_by_email
+    ? doc.uploaded_by_email[0].toUpperCase()
+    : "?";
+  const uploaderName = doc.uploaded_by_email
+    ? doc.uploaded_by_email.split("@")[0]
+    : "Unknown";
 
   return (
-    <div className={`group flex items-start gap-3 rounded-md border p-3 transition-all hover:border-foreground/20 ${isDupe ? "opacity-50" : ""}`}>
-      <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{doc.filename}</span>
-          <StatusBadge
-            status={doc.similarity_status}
-            score={doc.similarity_score}
-            parentFilename={doc.similarity_parent_filename}
-          />
+    <div className={`group rounded-md border transition-all hover:border-foreground/20 ${isDupe ? "opacity-50" : ""}`}>
+      <div className="flex items-start gap-3 p-3">
+        {/* Uploader avatar */}
+        <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-[10px] font-bold text-foreground/70" title={doc.uploaded_by_email}>
+          {uploaderInitial}
         </div>
-
-        {doc.version_number > 1 && (
-          <div className="mt-0.5 text-[11px] text-amber-600">
-            v{doc.version_number} of {doc.similarity_parent_filename}
-          </div>
-        )}
-
-        {isDupe && doc.similarity_parent_filename && (
-          <div className="mt-0.5 text-[11px] text-red-500">
-            Same as {doc.similarity_parent_filename} — skipped
-          </div>
-        )}
-
-        <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
-          {!isDupe && doc.entity_count > 0 && (
-            <span>{doc.entity_count} entities extracted</span>
-          )}
-          {doc.char_count > 0 && (
-            <span>{doc.char_count.toLocaleString()} chars</span>
-          )}
-          {doc.similarity_status === "near_duplicate" && (
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => onViewDiff(doc.id)}
-              className="inline-flex items-center gap-0.5 text-amber-600 hover:underline"
+              onClick={() => setShowPreview(true)}
+              className="truncate text-sm font-medium text-foreground hover:underline underline-offset-2 text-left"
             >
-              View diff
-              <ArrowUpRight className="size-3" />
+              {doc.filename}
             </button>
+            <StatusBadge
+              status={doc.similarity_status}
+              score={doc.similarity_score}
+              parentFilename={doc.similarity_parent_filename}
+            />
+          </div>
+
+          {doc.version_number > 1 && (
+            <div className="mt-0.5 text-[11px] text-amber-600">
+              v{doc.version_number} of {doc.similarity_parent_filename}
+            </div>
           )}
+
+          {isDupe && doc.similarity_parent_filename && (
+            <div className="mt-0.5 text-[11px] text-red-500">
+              Same as {doc.similarity_parent_filename} — skipped
+            </div>
+          )}
+
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground/60">{uploaderName}</span>
+            {doc.char_count > 0 && (
+              <span>{doc.char_count.toLocaleString()} chars</span>
+            )}
+            {(doc.similarity_status === "near_duplicate" || doc.similarity_status === "evolved_version") && (
+              <button
+                onClick={() => onViewDiff(doc.id)}
+                className="inline-flex items-center gap-0.5 text-amber-600 hover:underline"
+              >
+                View diff
+                <ArrowUpRight className="size-3" />
+              </button>
+            )}
+            {hasVersions && (
+              <button
+                onClick={() => setShowLifecycle(!showLifecycle)}
+                className="inline-flex items-center gap-0.5 text-foreground/60 hover:text-foreground hover:underline"
+              >
+                {showLifecycle ? "Hide" : "View"} lifecycle
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Inline lifecycle timeline */}
+      {showLifecycle && (
+        <div className="border-t bg-muted/20 px-3 py-4">
+          <DocumentLifecycle documentId={doc.id} matterId={matterId} />
+        </div>
+      )}
+
+      {/* Document preview dialog */}
+      {showPreview && (
+        <DocumentPreviewDialog doc={doc} onClose={() => setShowPreview(false)} />
+      )}
     </div>
   );
 }
 
-function BatchNode({ batch, maxEntities, onViewDiff }: {
+function BatchNode({ batch, matterId, onViewDiff }: {
   batch: TimelineBatch;
-  maxEntities: number;
+  matterId: string;
   onViewDiff: (docId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
@@ -159,16 +243,11 @@ function BatchNode({ batch, maxEntities, onViewDiff }: {
           </span>
         </button>
 
-        {/* Entity growth bar */}
-        <div className="mt-2 max-w-xs">
-          <EntityBar count={batch.cumulative_entity_count} max={maxEntities} />
-        </div>
-
         {/* Documents */}
         {expanded && (
           <div className="mt-3 space-y-2 animate-stagger">
             {batch.documents.map((doc) => (
-              <DocumentCard key={doc.id} doc={doc} onViewDiff={onViewDiff} />
+              <DocumentCard key={doc.id} doc={doc} matterId={matterId} onViewDiff={onViewDiff} />
             ))}
           </div>
         )}
@@ -215,22 +294,14 @@ export function CaseTimeline({ matterId }: { matterId: string }) {
     );
   }
 
-  const maxEntities = Math.max(...data.batches.map((b) => b.cumulative_entity_count), 1);
-
   return (
     <div className="mx-auto max-w-2xl py-6">
       {/* Summary stats */}
-      <div className="mb-8 grid grid-cols-3 gap-px overflow-hidden rounded-lg border bg-border">
+      <div className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border">
         <div className="bg-background px-5 py-4">
           <div className="text-2xl font-light tabular-nums">{data.total_documents}</div>
           <div className="mt-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
             Documents
-          </div>
-        </div>
-        <div className="bg-background px-5 py-4">
-          <div className="text-2xl font-light tabular-nums">{data.total_entities}</div>
-          <div className="mt-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-            Entities
           </div>
         </div>
         <div className="bg-background px-5 py-4">
@@ -254,7 +325,7 @@ export function CaseTimeline({ matterId }: { matterId: string }) {
           <BatchNode
             key={batch.batch_date}
             batch={batch}
-            maxEntities={maxEntities}
+            matterId={matterId}
             onViewDiff={setDiffDocId}
           />
         ))}

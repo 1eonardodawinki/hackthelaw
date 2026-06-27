@@ -55,6 +55,17 @@ async def get_timeline(slug: str, user: AuthUser = Depends(get_current_user)) ->
     )
     total_entities = total_entities_result[0]["total"] if total_entities_result else 0
 
+    # Resolve uploader UUIDs to emails
+    uploader_ids = list({doc.get("uploaded_by", "") for doc in docs if doc.get("uploaded_by")})
+    uploader_map: dict[str, str] = {}
+    for uid in uploader_ids:
+        try:
+            user_info = sb.auth.admin.get_user_by_id(uid)
+            if user_info and user_info.user:
+                uploader_map[uid] = user_info.user.email or uid[:8]
+        except Exception:
+            uploader_map[uid] = uid[:8]
+
     # Build version chain lookup
     version_chains: dict[str, list[dict]] = defaultdict(list)
     for doc in docs:
@@ -86,11 +97,14 @@ async def get_timeline(slug: str, user: AuthUser = Depends(get_current_user)) ->
             date_key = "unknown"
 
         neo4j_doc_id = doc.get("neo4j_document_id", "")
+        uploader_id = doc.get("uploaded_by", "")
         batches_map[date_key].append({
             "id": doc["id"],
             "filename": doc["filename"],
             "title": doc.get("title", ""),
             "uploaded_at": doc.get("created_at"),
+            "uploaded_by": uploader_id,
+            "uploaded_by_email": uploader_map.get(uploader_id, ""),
             "similarity_status": doc.get("similarity_status", "new"),
             "similarity_score": doc.get("similarity_score"),
             "similarity_parent_filename": parent_filenames.get(doc["id"]),

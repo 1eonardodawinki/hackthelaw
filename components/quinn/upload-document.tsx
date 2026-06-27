@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Upload, Loader2, CheckCircle2, Sparkles, User, Bot, AlertTriangle, FileText } from "lucide-react";
+import { Upload, Loader2, CheckCircle2, Sparkles, User, Bot, AlertTriangle, FileText, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,12 +25,21 @@ interface SimilarityInfo {
   diff_summary: string | null;
 }
 
+interface SemanticMatchInfo {
+  relationship: string;
+  confidence: number;
+  explanation: string;
+  key_changes: string[];
+  matched_filename: string | null;
+}
+
 interface FileResult {
   filename: string;
-  status: "success" | "error" | "duplicate" | "near_duplicate";
+  status: "success" | "error" | "duplicate" | "near_duplicate" | "evolved_version";
   entities_extracted?: number;
   relations_extracted?: number;
   similarity?: SimilarityInfo | null;
+  semantic_match?: SemanticMatchInfo | null;
   error?: string;
   upload_id?: string;
   document_id?: string;
@@ -245,6 +254,7 @@ export function UploadDocumentButton({ matterId }: { matterId?: string }) {
         const uploadData = await uploadRes.json();
 
         const similarity: SimilarityInfo | null = uploadData.similarity ?? null;
+        const semanticMatch: SemanticMatchInfo | null = uploadData.semantic_match ?? null;
 
         // If exact duplicate, skip confirm + extract
         if (similarity?.status === "exact_duplicate") {
@@ -301,12 +311,19 @@ export function UploadDocumentButton({ matterId }: { matterId?: string }) {
           } catch { /* version linking failed, not critical */ }
         }
 
+        const docStatus = semanticMatch?.relationship === "evolved_version"
+          ? "evolved_version" as const
+          : similarity?.status === "near_duplicate"
+            ? "near_duplicate" as const
+            : "success" as const;
+
         allResults.push({
           filename: file.name,
-          status: similarity?.status === "near_duplicate" ? "near_duplicate" : "success",
+          status: docStatus,
           entities_extracted: extractData.entities_extracted,
           relations_extracted: extractData.relations_extracted,
           similarity,
+          semantic_match: semanticMatch,
           document_id: confirmed.document_id,
         });
       } catch (e) {
@@ -473,6 +490,7 @@ export function UploadDocumentButton({ matterId }: { matterId?: string }) {
               {results.map((r, i) => (
                 <div key={i} className="flex items-start gap-2 text-xs rounded-md border p-2">
                   {r.status === "success" && <CheckCircle2 className="size-3.5 mt-0.5 text-emerald-500 shrink-0" />}
+                  {r.status === "evolved_version" && <ArrowUpRight className="size-3.5 mt-0.5 text-blue-500 shrink-0" />}
                   {r.status === "near_duplicate" && <AlertTriangle className="size-3.5 mt-0.5 text-amber-500 shrink-0" />}
                   {r.status === "duplicate" && <AlertTriangle className="size-3.5 mt-0.5 text-red-400 shrink-0" />}
                   {r.status === "error" && <AlertTriangle className="size-3.5 mt-0.5 text-destructive shrink-0" />}
@@ -480,6 +498,17 @@ export function UploadDocumentButton({ matterId }: { matterId?: string }) {
                     <div className="font-medium truncate">{r.filename}</div>
                     {r.status === "success" && (
                       <div className="text-muted-foreground">{r.entities_extracted} entities, {r.relations_extracted} relations</div>
+                    )}
+                    {r.status === "evolved_version" && (
+                      <div className="text-blue-600">
+                        Evolved version of {r.semantic_match?.matched_filename ?? r.similarity?.matched_filename}
+                        {r.semantic_match?.explanation && <span className="text-muted-foreground"> — {r.semantic_match.explanation}</span>}
+                        {r.semantic_match?.key_changes && r.semantic_match.key_changes.length > 0 && (
+                          <ul className="mt-1 list-disc pl-4 text-muted-foreground">
+                            {r.semantic_match.key_changes.map((c, j) => <li key={j}>{c}</li>)}
+                          </ul>
+                        )}
+                      </div>
                     )}
                     {r.status === "near_duplicate" && (
                       <div className="text-amber-600">
