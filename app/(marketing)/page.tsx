@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 
 const STEPS = [
   {
-    title: "Control tower",
+    title: "Dashboard",
     body:
       "Matters listed as cards; any matter with clauses in the \"needs your judgement\" lane shows an amber badge.",
   },
@@ -40,47 +40,61 @@ const STEPS = [
   },
 ];
 
-const PROOF_POINTS = [
-  {
-    label: "Real GDPR text",
-    body: "Pulled live from EUR-Lex's official consolidated text, not paraphrased.",
-  },
-  {
-    label: "Real model calls",
-    body: "Clause analysis and chat run on Perplexity's Agent API, not canned responses.",
-  },
-  {
-    label: "Real graph writes",
-    body: "Every review and sign-off lands in the bi-temporal case-memory graph at the moment work happens.",
-  },
+const STATS = [
+  { value: "100+", label: "GDPR provisions ingested live from EUR-Lex" },
+  { value: "10", label: "Firm playbook rules checked against every clause" },
+  { value: "3", label: "Triage lanes — needs judgement, quick confirm, auto-cleared" },
+  { value: "0", label: "Fabricated facts — real error shown if a source is unreachable" },
 ];
 
 const STACK = ["Next.js", "Neo4j", "Perplexity Agent API", "EUR-Lex"];
 
 export default function LandingPage() {
   return (
-    <main className="mx-auto w-full max-w-5xl px-10 py-24">
+    <main className="mx-auto w-full max-w-5xl px-10 py-16">
       {/* ── Hero ── */}
-      <section className="border-b pb-16">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Supervision layer for human–AI legal teams
-        </span>
-        <h1 className="mt-4 max-w-3xl text-5xl font-semibold tracking-tight text-foreground">
-          Quinn
-        </h1>
-        <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
-          Quinn triages AI review output by confidence × risk × consequence, lets a
-          partner inspect the real reasoning and real sources behind each finding, and
-          records every decision — and every change of belief over time — in a
-          bi-temporal case-memory graph.
-        </p>
-        <div className="mt-8 flex items-center gap-3">
-          <Button size="lg" render={<Link href="/matters" />}>
-            Enter the control tower
-          </Button>
-          <Button size="lg" variant="outline" render={<Link href="/health" />}>
-            Check system health
-          </Button>
+      <section className="relative left-1/2 right-1/2 -mx-[50vw] -mt-16 w-screen overflow-hidden border-b pb-20">
+        <video
+          className="absolute inset-0 -z-10 size-full object-cover"
+          src="/London_Skyline_1.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+        />
+        <div className="mx-auto max-w-5xl px-10 pt-28">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            For human–AI legal teams
+          </span>
+          <h1 className="mt-5 max-w-3xl text-6xl font-semibold tracking-tight text-foreground sm:text-7xl">
+            Supervision, not automation.
+          </h1>
+          <p className="mt-6 max-w-xl text-lg text-muted-foreground">
+            Quinn triages AI review by confidence × risk × consequence, and keeps a
+            permanent, bi-temporal record of every judgement call a partner makes.
+          </p>
+          <div className="mt-9 flex items-center gap-3">
+            <Button size="lg" render={<Link href="/matters" />}>
+              Enter the dashboard
+            </Button>
+            <Button size="lg" variant="outline" render={<Link href="/health" />}>
+              Check system health
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Stats ── */}
+      <section className="border-b py-16">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
+          {STATS.map((stat) => (
+            <div key={stat.label} className="bg-background px-6 py-8">
+              <div className="text-4xl font-semibold tabular-nums tracking-tight text-foreground">
+                {stat.value}
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{stat.label}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -101,28 +115,6 @@ export default function LandingPage() {
                   <p className="mt-1 text-sm text-muted-foreground">{step.body}</p>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Credibility ── */}
-      <section className="border-b py-16">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Everything in this app is live
-        </span>
-        <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-          The only authored content is the firm&apos;s own playbook — the firm&apos;s
-          standards, not legal advice or case material. If an external API can&apos;t be
-          reached, the UI shows the real error; it never falls back to fake data.
-        </p>
-        <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
-          {PROOF_POINTS.map((point) => (
-            <div key={point.label} className="bg-background px-6 py-5">
-              <div className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                {point.label}
-              </div>
-              <p className="mt-1 text-sm text-foreground">{point.body}</p>
             </div>
           ))}
         </div>
@@ -149,7 +141,7 @@ export default function LandingPage() {
             Ready to see where judgement actually moves the outcome?
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Open the control tower and run a live analysis on a real matter.
+            Open the dashboard and run a live analysis on a real matter.
           </p>
         </div>
         <Button size="lg" render={<Link href="/matters" />}>

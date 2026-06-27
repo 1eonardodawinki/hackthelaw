@@ -25,7 +25,7 @@ export default function ErrorPage({ error, reset }: { error: Error; reset: () =>
               Try again
             </Button>
             <Button size="sm" variant="outline" render={<Link href="/matters" />}>
-              Control tower
+              Dashboard
             </Button>
           </div>
         </CardContent>

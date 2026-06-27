@@ -9,7 +9,7 @@ export default function NotFound() {
         Nothing in the graph matches that id. It may not have been ingested yet.
       </p>
       <Button size="sm" render={<Link href="/matters" />}>
-        Back to control tower
+        Back to dashboard
       </Button>
     </main>
   );
